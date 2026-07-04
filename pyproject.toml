@@ -16,7 +16,7 @@ dependencies = []
 
 # The LLM engine is optional so the checklist/CLI install with zero deps.
 [project.optional-dependencies]
-engine = ["anthropic>=0.40"]
+engine = ["anthropic>=0.40", "pydantic>=2"]
 dev = ["pytest>=8"]
 
 [project.scripts]
