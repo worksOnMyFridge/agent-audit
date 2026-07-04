@@ -14,6 +14,10 @@ dist/
 venv/
 .pytest_cache/
 
+# Internal agent rules — local only, never push (clean-room)
+CLAUDE.local.md
+.claude/
+
 # OS / editor
 .DS_Store
 Thumbs.db
