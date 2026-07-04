@@ -59,19 +59,35 @@ The full, per-check criteria live in [`checklists/gh600_domains.md`](checklists/
 ## Usage
 
 ```
-agent-audit <path>        # audit an agent project (template report in v0)
+agent-audit <path>        # manual audit template (stdlib only, no API key)
+agent-audit <path> --engine   # LLM-scored audit (needs [engine] extra + key)
 agent-audit --list        # print the full audit methodology
 agent-audit --version
 ```
 
-See a complete example in [`examples/sample_report.md`](examples/sample_report.md).
+The engine treats all repository content as untrusted data, not instructions,
+and fails closed: any check it cannot verify is reported as such, never as a
+silent pass. See a complete example in
+[`examples/sample_report.md`](examples/sample_report.md).
+
+## Development
+
+```
+pip install -e ".[dev]"
+python -m pytest
+```
+
+The checklist, report renderer, and CLI have no runtime dependencies. The engine
+is unit-tested with an injected fake LLM call, so the suite runs without an API
+key. CI runs the tests on Python 3.11-3.13.
 
 ## Status / roadmap
 
-- **v0 (current)** — methodology + checklist + CLI that emits a fill-in audit
-  template. Runs with the standard library only, no API key required.
-- **v0.2** — the LLM engine (`agent_audit/engine.py`): gather repo context, run
-  each domain's checks with the Anthropic SDK, and auto-fill findings.
+- **v0** — methodology, 36-check checklist, and a stdlib-only CLI that emits a
+  fill-in audit template.
+- **v0.2 (current)** — the LLM engine (`agent_audit/engine.py`): gathers repo
+  context and scores each domain's checks via the Anthropic SDK. Enable with
+  `pip install ".[engine]"`, set `ANTHROPIC_API_KEY`, and pass `--engine`.
 - **later** — JSON output, CI mode (fail the build on new critical findings),
   per-language heuristics.
 

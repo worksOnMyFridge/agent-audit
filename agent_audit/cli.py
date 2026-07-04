@@ -15,15 +15,15 @@ def main(argv: list[str] | None = None) -> int:
         prog="agent-audit",
         description="Reliability audit for AI agents across the six GH-600 domains.",
     )
-    parser.add_argument(
-        "path", nargs="?", help="path to the agent project to audit",
-    )
+    parser.add_argument("path", nargs="?", help="path to the agent project to audit")
     parser.add_argument(
         "--list", action="store_true", help="print the full audit methodology and exit",
     )
     parser.add_argument(
-        "--version", action="version", version=f"agent-audit {__version__}",
+        "--engine", action="store_true",
+        help="run the LLM engine (needs the [engine] extra and ANTHROPIC_API_KEY)",
     )
+    parser.add_argument("--version", action="version", version=f"agent-audit {__version__}")
     args = parser.parse_args(argv)
 
     if args.list:
@@ -39,7 +39,17 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(f"error: path not found: {target}\n")
         return 2
 
-    # v0: emit a manual audit template. The LLM engine (v0.2) will auto-fill it.
+    if args.engine:
+        from agent_audit import engine  # lazy: keeps the default path dependency-free
+        try:
+            findings = engine.audit(str(target))
+        except Exception as exc:  # noqa: BLE001 - surface any engine/SDK error cleanly
+            sys.stderr.write(f"error: engine failed: {exc}\n")
+            return 3
+        sys.stdout.write(report.render_findings(findings, str(target)))
+        return 0
+
+    # Default (v0): emit a manual audit template - stdlib only, no API key.
     sys.stdout.write(report.render_template(ALL_DOMAINS, str(target)))
     return 0
 
