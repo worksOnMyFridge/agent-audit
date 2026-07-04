@@ -1,0 +1,29 @@
+[project]
+name = "agent-audit"
+version = "0.1.0"
+description = "Reliability audit for AI agents, based on the six GH-600 competency domains."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "worksOnMyFridge" }]
+keywords = ["ai-agents", "audit", "llm", "guardrails", "gh-600", "reliability", "mcp"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3.11",
+    "License :: OSI Approved :: MIT License",
+]
+dependencies = []
+
+# The LLM engine is optional so the checklist/CLI install with zero deps.
+[project.optional-dependencies]
+engine = ["anthropic>=0.40"]
+
+[project.scripts]
+agent-audit = "agent_audit.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agent_audit"]
