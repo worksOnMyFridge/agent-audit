@@ -24,3 +24,12 @@ jobs:
         run: |
           agent-audit --version
           agent-audit --list | head -3
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Scan for leaked secrets
+        uses: gitleaks/gitleaks-action@v2
