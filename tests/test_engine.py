@@ -33,38 +33,46 @@ def _verdicts(passed, evidence="ok"):
 
 
 def test_audit_maps_verdicts_to_findings():
-    findings = engine.audit(".", verdict_call=lambda s, u: _verdicts(True), domains=[D6])
+    findings = engine.audit(".", verdict_call=lambda s, c: _verdicts(True), domains=[D6])
     assert len(findings) == len(D6.checks)
     assert all(isinstance(f, Finding) and f.passed for f in findings)
 
 
 def test_audit_reports_failures():
-    findings = engine.audit(".", verdict_call=lambda s, u: _verdicts(False, "missing"), domains=[D6])
+    findings = engine.audit(".", verdict_call=lambda s, c: _verdicts(False, "missing"), domains=[D6])
     assert all(not f.passed for f in findings)
     assert all(f.evidence == "missing" for f in findings)
 
 
-def test_untrusted_content_is_delimited():
+def test_context_block_wraps_and_is_cacheable():
+    b = engine._context_block("some code here")
+    assert b["text"].startswith("<repository_content>") and "some code here" in b["text"]
+    assert b["cache_control"] == {"type": "ephemeral"}
+
+
+def test_untrusted_content_is_delimited_and_cached():
     seen = {}
 
-    def spy(system, user):
-        seen["system"], seen["user"] = system, user
+    def spy(system, content):
+        seen["system"], seen["content"] = system, content
         return []
 
     engine.audit(".", verdict_call=spy, domains=[D6])
-    assert "<repository_content>" in seen["user"]
+    ctx = seen["content"][0]  # first block is the cached repo context
+    assert "<repository_content>" in ctx["text"]
+    assert ctx["cache_control"] == {"type": "ephemeral"}
     assert "untrusted" in seen["system"].lower()
 
 
 def test_empty_verdicts_fail_closed():
-    findings = engine.audit(".", verdict_call=lambda s, u: [], domains=[D6])
+    findings = engine.audit(".", verdict_call=lambda s, c: [], domains=[D6])
     assert findings and all(not f.passed for f in findings)
     assert all("not verified" in f.evidence for f in findings)
 
 
 def test_missing_verdict_for_a_check_fails_closed():
     first = D6.checks[0].id
-    call = lambda s, u: [{"check_id": first, "passed": True, "evidence": "ok"}]  # noqa: E731
+    call = lambda s, c: [{"check_id": first, "passed": True, "evidence": "ok"}]  # noqa: E731
     findings = engine.audit(".", verdict_call=call, domains=[D6])
     passed = [f for f in findings if f.passed]
     assert len(passed) == 1 and passed[0].check.id == first
@@ -72,14 +80,14 @@ def test_missing_verdict_for_a_check_fails_closed():
 
 
 def test_unknown_verdict_ids_are_ignored():
-    call = lambda s, u: _verdicts(True) + [{"check_id": "zzz.9", "passed": False, "evidence": "x"}]  # noqa: E731
+    call = lambda s, c: _verdicts(True) + [{"check_id": "zzz.9", "passed": False, "evidence": "x"}]  # noqa: E731
     findings = engine.audit(".", verdict_call=call, domains=[D6])
     assert len(findings) == len(D6.checks)  # extraneous id dropped, count stable
     assert all(f.passed for f in findings)
 
 
 def test_applicable_flag_propagates():
-    call = lambda s, u: [  # noqa: E731
+    call = lambda s, c: [  # noqa: E731
         {"check_id": c.id, "passed": False, "evidence": "no code", "applicable": False}
         for c in D6.checks
     ]
@@ -89,7 +97,7 @@ def test_applicable_flag_propagates():
 
 def test_missing_applicable_defaults_true():
     # verdicts without an "applicable" key stay applicable (fail-closed default)
-    findings = engine.audit(".", verdict_call=lambda s, u: _verdicts(False), domains=[D6])
+    findings = engine.audit(".", verdict_call=lambda s, c: _verdicts(False), domains=[D6])
     assert all(f.applicable for f in findings)
 
 
@@ -103,7 +111,7 @@ def test_cap_severity_downgrade_and_ceiling():
 
 def test_audit_applies_capped_severity():
     # d6.1 is a critical check; the model downgrades it to minor for this context
-    call = lambda s, u: [{"check_id": "d6.1", "passed": False, "evidence": "low impact", "severity": "minor"}]  # noqa: E731
+    call = lambda s, c: [{"check_id": "d6.1", "passed": False, "evidence": "low impact", "severity": "minor"}]  # noqa: E731
     findings = engine.audit(".", verdict_call=call, domains=[D6])
     f61 = next(f for f in findings if f.check.id == "d6.1")
     assert f61.effective_severity == "minor"
