@@ -63,3 +63,18 @@ def test_template_report_json_contract():
     assert rep["engine"] is False
     assert len(rep["checks"]) == 36
     assert {"check_id", "domain", "title", "severity", "guidance"} <= set(rep["checks"][0])
+
+
+def test_fails_threshold():
+    checks = [c for d in ALL_DOMAINS for c in d.checks]
+    # one failing critical (d2.1 is critical), everything else passes
+    crit_fail = [Finding(c, passed=(c.id != "d2.1")) for c in checks]
+    assert report.fails_threshold(crit_fail, "critical") is True
+    assert report.fails_threshold(crit_fail, "major") is True   # critical is above major
+    # only a failing minor
+    minor_fail = [Finding(c, passed=(c.severity != "minor")) for c in checks]
+    assert report.fails_threshold(minor_fail, "critical") is False
+    assert report.fails_threshold(minor_fail, "major") is False
+    assert report.fails_threshold(minor_fail, "minor") is True
+    # all pass -> never fails
+    assert report.fails_threshold([Finding(c, passed=True) for c in checks], "minor") is False

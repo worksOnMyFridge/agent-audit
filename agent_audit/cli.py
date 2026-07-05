@@ -28,6 +28,10 @@ def main(argv: list[str] | None = None) -> int:
         "--format", choices=["text", "json"], default="text",
         help="output format (default: text)",
     )
+    parser.add_argument(
+        "--fail-on", choices=["critical", "major", "minor"], default=None, dest="fail_on",
+        help="exit 4 if a failing finding at or above this severity exists (engine mode)",
+    )
     parser.add_argument("--version", action="version", version=f"agent-audit {__version__}")
     args = parser.parse_args(argv)
 
@@ -55,6 +59,8 @@ def main(argv: list[str] | None = None) -> int:
             sys.stdout.write(json.dumps(report.findings_report(findings, str(target)), indent=2) + "\n")
         else:
             sys.stdout.write(report.render_findings(findings, str(target)))
+        if args.fail_on and report.fails_threshold(findings, args.fail_on):
+            return 4
         return 0
 
     # Default (no engine): the audit template - stdlib only, no API key.
