@@ -1,5 +1,7 @@
 # agent-audit
 
+[![ci](https://github.com/worksOnMyFridge/agent-audit/actions/workflows/ci.yml/badge.svg)](https://github.com/worksOnMyFridge/agent-audit/actions/workflows/ci.yml)
+
 > Reliability audit for AI agents — based on the six competency domains of the
 > **GitHub Agentic AI Developer** certification (exam GH-600).
 
@@ -14,24 +16,43 @@ private material — so the checklist itself is useful even before you run the
 tool.
 
 ```
-$ pipx install agent-audit
-$ agent-audit ./my-agent
+# not yet on PyPI — install from source
+$ pipx install "git+https://github.com/worksOnMyFridge/agent-audit"
+$ agent-audit ./my-agent            # audit checklist, no API key needed
+$ agent-audit ./my-agent --engine   # LLM-scored (add the [engine] extra + a key)
 ```
 
 ```
 Agent Audit - ./my-agent
-Score: 62/100 | 3 critical | 5 major | 4 minor
+Score: 78/100 | 1 critical | 2 major | 3 minor | 4 n/a
 
 D6
   [CRITICAL] Untrusted input is defended against prompt injection (agent.py:88)
-    -> Sanitize and isolate untrusted content as data; never let it become instructions.
-  [MAJOR] Outputs are validated before use (schema / allowlist)
+    -> Isolate untrusted content as data; never let it become instructions.
+  [MAJOR] Outputs are validated before use (agent.py:140)
     -> Validate the structure and content of model output before acting on it.
 
-D3
-  [MAJOR] Short-term context is bounded (memory.py:20)
-    -> Compact or summarize long histories; unbounded context degrades quality and cost.
+Not applicable (4): d5.1, d5.2, d5.4, d5.6
+
+Findings are candidates for human review, not authoritative verdicts.
 ```
+
+## What it does
+
+- **Six-domain checklist** derived from the public GH-600 outline — usable as a
+  manual review even without the engine.
+- **LLM engine** (`--engine`) scores each domain via the Anthropic SDK with
+  structured outputs, treating repo content as untrusted data and failing closed.
+- **Context-aware precision** — the model marks a check *not applicable* when the
+  capability is absent by design, and lowers a check's severity to fit real-world
+  impact, so a single-purpose or docs-only repo is not falsely penalized.
+- **Relevance-ranked coverage** — audits the most important files first
+  (entrypoints, memory / tool / guardrail modules) within a token budget, and
+  reports how much of the repo it covered.
+- **Cost-aware** — the repo context is prompt-cached across the six domain calls
+  (~65–70% less input); the model is configurable via `AGENT_AUDIT_MODEL`.
+- **CI-ready** — JSON output, a `--fail-on` gate, a `.agent-audit-ignore`
+  baseline, and a scheduled self-audit workflow.
 
 ## Why
 
@@ -59,17 +80,19 @@ The full, per-check criteria live in [`checklists/gh600_domains.md`](checklists/
 ## Usage
 
 ```
-agent-audit <path>        # manual audit template (stdlib only, no API key)
-agent-audit <path> --engine   # LLM-scored audit (needs [engine] extra + key)
-agent-audit --list        # print the full audit methodology
-agent-audit --version
+agent-audit <path>                              # manual audit template (stdlib only, no API key)
+agent-audit <path> --engine                     # LLM-scored audit (needs [engine] extra + ANTHROPIC_API_KEY)
+agent-audit <path> --engine --format json       # machine-readable report (score, findings, coverage)
+agent-audit <path> --engine --fail-on critical  # exit non-zero on a critical finding (CI gate)
+agent-audit --list                              # print the full audit methodology
 ```
 
 The engine treats all repository content as untrusted data, not instructions,
 and fails closed: any check it cannot verify is reported as such, never as a
 silent pass. Findings are candidates for human review, not authoritative
 verdicts; suppress already-triaged ones with a `.agent-audit-ignore` file
-(one check id per line). See a hand-written example in
+(one check id per line). Set `AGENT_AUDIT_MODEL` to choose the model (e.g. a
+cheaper one for large sweeps). See a hand-written example in
 [`examples/sample_report.md`](examples/sample_report.md), or a real run of the
 tool on its own source in [`examples/self-audit.md`](examples/self-audit.md).
 
@@ -82,17 +105,18 @@ python -m pytest
 
 The checklist, report renderer, and CLI have no runtime dependencies. The engine
 is unit-tested with an injected fake LLM call, so the suite runs without an API
-key. CI runs the tests on Python 3.11-3.13.
+key. CI runs the tests on Python 3.11–3.13, and a scheduled workflow audits this
+repo with the engine itself.
 
-## Status / roadmap
+## Status
 
-- **v0** — methodology, 36-check checklist, and a stdlib-only CLI that emits a
-  fill-in audit template.
-- **v0.2 (current)** — the LLM engine (`agent_audit/engine.py`): gathers repo
-  context and scores each domain's checks via the Anthropic SDK. Enable with
-  `pip install ".[engine]"`, set `ANTHROPIC_API_KEY`, and pass `--engine`.
-- **later** — JSON output, CI mode (fail the build on new critical findings),
-  per-language heuristics.
+Feature-complete v1: methodology + LLM engine (structured outputs, prompt
+caching, context-aware severity and applicability), relevance-ranked coverage,
+`--format json`, `--fail-on` gating, `.agent-audit-ignore` baseline, a scheduled
+self-audit workflow, and a test suite on CI.
+
+Not yet published to PyPI. Backlog (by need): per-language heuristics,
+configurable severity thresholds, response caching between runs.
 
 ## License
 
