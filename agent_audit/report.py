@@ -112,3 +112,12 @@ def template_report(domains: list[Domain], target: str) -> dict:
             for c in d.checks
         ],
     }
+
+
+def fails_threshold(findings: list[Finding], severity: str) -> bool:
+    """True if any failing finding is at or above `severity` (critical > major > minor)."""
+    limit = SEVERITY_ORDER.index(severity)
+    return any(
+        not f.passed and SEVERITY_ORDER.index(f.check.severity) <= limit
+        for f in findings
+    )

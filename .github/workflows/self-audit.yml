@@ -1,0 +1,34 @@
+name: self-audit
+
+# Runs the tool on its own source. Manual + weekly only (each run spends API
+# tokens). Never triggered by fork PRs, so the API-key secret is never exposed
+# to untrusted code.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+
+jobs:
+  self-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install (with engine)
+        run: pip install -e ".[engine]"
+      - name: Audit self and gate on critical findings
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set +e
+          agent-audit --engine . --fail-on critical | tee report.txt
+          code=${PIPESTATUS[0]}
+          {
+            echo '## agent-audit self-audit'
+            echo '```'
+            cat report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$code"
