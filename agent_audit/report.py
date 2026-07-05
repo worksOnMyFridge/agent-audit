@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from agent_audit.model import Domain, Finding, SEVERITY_LABEL, SEVERITY_ORDER
 
 
@@ -79,7 +81,26 @@ def render_findings(findings: list[Finding], target: str) -> str:
     if na:
         lines.append("")
         lines.append(f"Not applicable ({len(na)}): " + ", ".join(f.check.id for f in na))
+    lines.append("")
+    lines.append("Findings are candidates for human review, not authoritative verdicts.")
     return "\n".join(lines) + "\n"
+
+
+def load_ignore(path: str | Path) -> set[str]:
+    """Parse a baseline/ignore file into a set of check ids to suppress.
+
+    One check id per line; '#' starts a comment; blank lines ignored. Lets a
+    re-run skip findings already triaged or accepted (e.g. a known, by-design gap).
+    """
+    ids: set[str] = set()
+    try:
+        for raw in Path(path).read_text(encoding="utf-8").splitlines():
+            line = raw.split("#", 1)[0].strip()
+            if line:
+                ids.add(line)
+    except OSError:
+        pass
+    return ids
 
 
 def findings_report(findings: list[Finding], target: str) -> dict:

@@ -101,6 +101,21 @@ def test_effective_severity_defaults_to_static():
     assert Finding(checks[0], passed=False).effective_severity == checks[0].severity
 
 
+def test_render_has_candidates_framing():
+    out = report.render_findings(_findings(lambda cid: True), "./x")
+    assert "candidates for human review" in out
+
+
+def test_load_ignore_parses_ids_and_comments(tmp_path):
+    f = tmp_path / ".agent-audit-ignore"
+    f.write_text("# baseline of accepted gaps\nd4.5  # judge diversity, tracked in #61\n\nd3.6\n")
+    assert report.load_ignore(f) == {"d4.5", "d3.6"}
+
+
+def test_load_ignore_missing_file_is_empty(tmp_path):
+    assert report.load_ignore(tmp_path / "does-not-exist") == set()
+
+
 def test_downgraded_severity_used_in_counts_and_gate():
     from agent_audit.domains import d6_guardrails
     crit = d6_guardrails.DOMAIN.checks[0]

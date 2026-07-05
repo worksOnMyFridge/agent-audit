@@ -40,6 +40,10 @@ def main(argv: list[str] | None = None) -> int:
         "--fail-on", choices=["critical", "major", "minor"], default=None, dest="fail_on",
         help="exit 4 if a failing finding at or above this severity exists (engine mode)",
     )
+    parser.add_argument(
+        "--ignore", default=None, metavar="FILE",
+        help="baseline file of check ids to suppress (default: <path>/.agent-audit-ignore)",
+    )
     parser.add_argument("--version", action="version", version=f"agent-audit {__version__}")
     args = parser.parse_args(argv)
 
@@ -64,19 +68,31 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as exc:  # noqa: BLE001 - surface any engine/SDK error cleanly
             sys.stderr.write(f"error: engine failed: {exc}\n")
             return 3
+        ignore_file = args.ignore
+        if ignore_file is None and target.is_dir():
+            default_ignore = target / ".agent-audit-ignore"
+            if default_ignore.exists():
+                ignore_file = str(default_ignore)
+        ignore = report.load_ignore(ignore_file) if ignore_file else set()
+        active = [f for f in findings if f.check.id not in ignore]
+        baselined = len(findings) - len(active)
+
         if args.format == "json":
-            data = report.findings_report(findings, str(target))
+            data = report.findings_report(active, str(target))
             data["coverage"] = cov
+            data["baselined"] = baselined
             sys.stdout.write(json.dumps(data, indent=2) + "\n")
         else:
-            sys.stdout.write(report.render_findings(findings, str(target)))
+            sys.stdout.write(report.render_findings(active, str(target)))
+            if baselined:
+                sys.stdout.write(f"\nBaselined: {baselined} check(s) suppressed via ignore file.\n")
             if cov.get("truncated"):
                 sys.stdout.write(
                     f"\nCoverage: audited {cov['files_included']} of "
                     f"{cov['files_total']} files (most relevant first; "
                     f"rest exceeded the size budget).\n"
                 )
-        if args.fail_on and report.fails_threshold(findings, args.fail_on):
+        if args.fail_on and report.fails_threshold(active, args.fail_on):
             return 4
         return 0
 
