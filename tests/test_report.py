@@ -45,3 +45,21 @@ def test_all_pass_reports_no_failures():
     out = report.render_findings(_findings(lambda cid: True), "./clean")
     assert "Score: 100/100" in out
     assert "No failing checks" in out
+
+
+def test_findings_report_json_contract():
+    failing = {"d6.1", "d6.2"}
+    rep = report.findings_report(_findings(lambda cid: cid not in failing), "./t")
+    assert rep["target"] == "./t"
+    assert rep["score"] == 94  # round(100 * 34/36)
+    assert rep["summary"] == {"critical": 2, "major": 0, "minor": 0, "passed": 34, "total": 36}
+    assert len(rep["findings"]) == 36
+    d61 = next(f for f in rep["findings"] if f["check_id"] == "d6.1")
+    assert d61["domain"] == "D6" and d61["severity"] == "critical" and d61["passed"] is False
+
+
+def test_template_report_json_contract():
+    rep = report.template_report(ALL_DOMAINS, "./t")
+    assert rep["engine"] is False
+    assert len(rep["checks"]) == 36
+    assert {"check_id", "domain", "title", "severity", "guidance"} <= set(rep["checks"][0])

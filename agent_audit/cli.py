@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -22,6 +23,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--engine", action="store_true",
         help="run the LLM engine (needs the [engine] extra and ANTHROPIC_API_KEY)",
+    )
+    parser.add_argument(
+        "--format", choices=["text", "json"], default="text",
+        help="output format (default: text)",
     )
     parser.add_argument("--version", action="version", version=f"agent-audit {__version__}")
     args = parser.parse_args(argv)
@@ -46,11 +51,17 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as exc:  # noqa: BLE001 - surface any engine/SDK error cleanly
             sys.stderr.write(f"error: engine failed: {exc}\n")
             return 3
-        sys.stdout.write(report.render_findings(findings, str(target)))
+        if args.format == "json":
+            sys.stdout.write(json.dumps(report.findings_report(findings, str(target)), indent=2) + "\n")
+        else:
+            sys.stdout.write(report.render_findings(findings, str(target)))
         return 0
 
-    # Default (v0): emit a manual audit template - stdlib only, no API key.
-    sys.stdout.write(report.render_template(ALL_DOMAINS, str(target)))
+    # Default (no engine): the audit template - stdlib only, no API key.
+    if args.format == "json":
+        sys.stdout.write(json.dumps(report.template_report(ALL_DOMAINS, str(target)), indent=2) + "\n")
+    else:
+        sys.stdout.write(report.render_template(ALL_DOMAINS, str(target)))
     return 0
 
 

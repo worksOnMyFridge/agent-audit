@@ -69,3 +69,46 @@ def render_findings(findings: list[Finding], target: str) -> str:
     if not failed:
         lines.append("No failing checks. [ok]")
     return "\n".join(lines) + "\n"
+
+
+def findings_report(findings: list[Finding], target: str) -> dict:
+    """Machine-readable engine report - the stable JSON contract for CI."""
+    failed = [f for f in findings if not f.passed]
+    by_sev = {s: sum(1 for f in failed if f.check.severity == s) for s in SEVERITY_ORDER}
+    passed_n = sum(1 for f in findings if f.passed)
+    total = len(findings)
+    return {
+        "target": target,
+        "score": round(100 * passed_n / total) if total else 0,
+        "summary": {**{s: by_sev[s] for s in SEVERITY_ORDER}, "passed": passed_n, "total": total},
+        "findings": [
+            {
+                "check_id": f.check.id,
+                "domain": f.check.id.split(".")[0].upper(),
+                "title": f.check.title,
+                "severity": f.check.severity,
+                "passed": f.passed,
+                "evidence": f.evidence,
+            }
+            for f in findings
+        ],
+    }
+
+
+def template_report(domains: list[Domain], target: str) -> dict:
+    """Machine-readable checklist for the no-engine path."""
+    return {
+        "target": target,
+        "engine": False,
+        "checks": [
+            {
+                "check_id": c.id,
+                "domain": d.id,
+                "title": c.title,
+                "severity": c.severity,
+                "guidance": c.guidance,
+            }
+            for d in domains
+            for c in d.checks
+        ],
+    }

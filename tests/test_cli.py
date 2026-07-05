@@ -1,5 +1,7 @@
 """CLI argument handling and exit codes."""
 
+import json
+
 from agent_audit.cli import main
 
 
@@ -22,3 +24,11 @@ def test_missing_path_exits_two(capsys):
 def test_no_args_prints_help_and_exits_one(capsys):
     assert main([]) == 1
     assert "usage" in capsys.readouterr().out.lower()
+
+
+def test_json_template_output(tmp_path, capsys):
+    (tmp_path / "agent.py").write_text("x = 1\n")
+    assert main([str(tmp_path), "--format", "json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["engine"] is False
+    assert len(data["checks"]) == 36
