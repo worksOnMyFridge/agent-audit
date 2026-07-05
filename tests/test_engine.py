@@ -1,10 +1,10 @@
-"""Engine logic, exercised with a fake LLM call (no API key needed)."""
-
-import json
+"""Engine logic, exercised with a fake verdict call (no API key needed)."""
 
 from agent_audit import engine
-from agent_audit.domains import ALL_DOMAINS, d6_guardrails
+from agent_audit.domains import d6_guardrails
 from agent_audit.model import Finding
+
+D6 = d6_guardrails.DOMAIN
 
 
 def test_gather_context_reads_source_and_skips_junk(tmp_path):
@@ -28,24 +28,18 @@ def test_gather_context_respects_byte_budget(tmp_path):
     assert len(ctx) < 1500
 
 
-def _fake_call_all(passed: bool, evidence: str = "ok"):
-    def call(system, user):
-        # echo back a verdict for every check_id present in the user prompt
-        ids = [tok.rstrip(":") for tok in user.split() if tok.rstrip(":").count(".") == 1
-               and tok[0] == "d"]
-        return json.dumps([{"check_id": i, "passed": passed, "evidence": evidence} for i in ids])
-    return call
+def _verdicts(passed, evidence="ok"):
+    return [{"check_id": c.id, "passed": passed, "evidence": evidence} for c in D6.checks]
 
 
 def test_audit_maps_verdicts_to_findings():
-    findings = engine.audit(".", llm_call=_fake_call_all(True), domains=[d6_guardrails.DOMAIN])
-    assert len(findings) == len(d6_guardrails.DOMAIN.checks)
+    findings = engine.audit(".", verdict_call=lambda s, u: _verdicts(True), domains=[D6])
+    assert len(findings) == len(D6.checks)
     assert all(isinstance(f, Finding) and f.passed for f in findings)
 
 
 def test_audit_reports_failures():
-    findings = engine.audit(".", llm_call=_fake_call_all(False, "missing"),
-                            domains=[d6_guardrails.DOMAIN])
+    findings = engine.audit(".", verdict_call=lambda s, u: _verdicts(False, "missing"), domains=[D6])
     assert all(not f.passed for f in findings)
     assert all(f.evidence == "missing" for f in findings)
 
@@ -54,31 +48,31 @@ def test_untrusted_content_is_delimited():
     seen = {}
 
     def spy(system, user):
-        seen["system"] = system
-        seen["user"] = user
-        return "[]"
+        seen["system"], seen["user"] = system, user
+        return []
 
-    engine.audit(".", llm_call=spy, domains=[d6_guardrails.DOMAIN])
+    engine.audit(".", verdict_call=spy, domains=[D6])
     assert "<repository_content>" in seen["user"]
     assert "untrusted" in seen["system"].lower()
 
 
-def test_malformed_json_fails_closed():
-    findings = engine.audit(".", llm_call=lambda s, u: "not json at all",
-                            domains=[d6_guardrails.DOMAIN])
-    # every check must be reported not-passed, never a silent pass
+def test_empty_verdicts_fail_closed():
+    findings = engine.audit(".", verdict_call=lambda s, u: [], domains=[D6])
     assert findings and all(not f.passed for f in findings)
     assert all("not verified" in f.evidence for f in findings)
 
 
 def test_missing_verdict_for_a_check_fails_closed():
-    # model returns a verdict for only the first check of the domain
-    first = d6_guardrails.DOMAIN.checks[0].id
-
-    def partial(system, user):
-        return json.dumps([{"check_id": first, "passed": True, "evidence": "ok"}])
-
-    findings = engine.audit(".", llm_call=partial, domains=[d6_guardrails.DOMAIN])
+    first = D6.checks[0].id
+    call = lambda s, u: [{"check_id": first, "passed": True, "evidence": "ok"}]  # noqa: E731
+    findings = engine.audit(".", verdict_call=call, domains=[D6])
     passed = [f for f in findings if f.passed]
     assert len(passed) == 1 and passed[0].check.id == first
     assert any("not verified" in f.evidence for f in findings)
+
+
+def test_unknown_verdict_ids_are_ignored():
+    call = lambda s, u: _verdicts(True) + [{"check_id": "zzz.9", "passed": False, "evidence": "x"}]  # noqa: E731
+    findings = engine.audit(".", verdict_call=call, domains=[D6])
+    assert len(findings) == len(D6.checks)  # extraneous id dropped, count stable
+    assert all(f.passed for f in findings)
