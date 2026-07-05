@@ -52,10 +52,48 @@ def test_findings_report_json_contract():
     rep = report.findings_report(_findings(lambda cid: cid not in failing), "./t")
     assert rep["target"] == "./t"
     assert rep["score"] == 94  # round(100 * 34/36)
-    assert rep["summary"] == {"critical": 2, "major": 0, "minor": 0, "passed": 34, "total": 36}
+    assert rep["summary"] == {
+        "critical": 2, "major": 0, "minor": 0,
+        "passed": 34, "applicable": 36, "not_applicable": 0, "total": 36,
+    }
     assert len(rep["findings"]) == 36
     d61 = next(f for f in rep["findings"] if f["check_id"] == "d6.1")
     assert d61["domain"] == "D6" and d61["severity"] == "critical" and d61["passed"] is False
+    assert d61["applicable"] is True
+
+
+def _na_findings(applicable_map, passed=True):
+    checks = [c for d in ALL_DOMAINS for c in d.checks]
+    return [Finding(c, passed=passed, applicable=applicable_map(c.id)) for c in checks]
+
+
+def test_not_applicable_excluded_from_score():
+    d1_ids = {c.id for c in ALL_DOMAINS[0].checks}  # mark all of D1 (6) n/a, rest pass
+    out = report.render_findings(_na_findings(lambda cid: cid not in d1_ids), "./t")
+    assert "Score: 100/100" in out  # 30 applicable, all pass
+    assert "6 n/a" in out
+    assert "Not applicable (6):" in out
+
+
+def test_all_na_scores_na():
+    out = report.render_findings(_na_findings(lambda cid: False, passed=False), "./docs")
+    assert "Score: n/a" in out
+    assert "No failing checks" in out
+
+
+def test_findings_report_na_in_summary():
+    d1_ids = {c.id for c in ALL_DOMAINS[0].checks}
+    rep = report.findings_report(_na_findings(lambda cid: cid not in d1_ids), "./t")
+    assert rep["summary"]["not_applicable"] == 6
+    assert rep["summary"]["applicable"] == 30
+    assert rep["score"] == 100
+
+
+def test_fails_threshold_ignores_na():
+    checks = [c for d in ALL_DOMAINS for c in d.checks]
+    # d2.1 is critical; failing but not applicable -> must not trip the gate
+    findings = [Finding(c, passed=(c.id != "d2.1"), applicable=(c.id != "d2.1")) for c in checks]
+    assert report.fails_threshold(findings, "critical") is False
 
 
 def test_template_report_json_contract():

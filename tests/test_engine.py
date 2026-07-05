@@ -76,3 +76,18 @@ def test_unknown_verdict_ids_are_ignored():
     findings = engine.audit(".", verdict_call=call, domains=[D6])
     assert len(findings) == len(D6.checks)  # extraneous id dropped, count stable
     assert all(f.passed for f in findings)
+
+
+def test_applicable_flag_propagates():
+    call = lambda s, u: [  # noqa: E731
+        {"check_id": c.id, "passed": False, "evidence": "no code", "applicable": False}
+        for c in D6.checks
+    ]
+    findings = engine.audit(".", verdict_call=call, domains=[D6])
+    assert all(not f.applicable for f in findings)
+
+
+def test_missing_applicable_defaults_true():
+    # verdicts without an "applicable" key stay applicable (fail-closed default)
+    findings = engine.audit(".", verdict_call=lambda s, u: _verdicts(False), domains=[D6])
+    assert all(f.applicable for f in findings)

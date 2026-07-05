@@ -44,3 +44,4 @@ class Finding:
     check: Check
     passed: bool
     evidence: str = ""  # where/why, e.g. "engine.py:88"
+    applicable: bool = True  # False = no relevant code to assess (excluded from score)

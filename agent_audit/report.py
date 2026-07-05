@@ -41,16 +41,24 @@ def render_template(domains: list[Domain], target: str) -> str:
 
 
 def render_findings(findings: list[Finding], target: str) -> str:
-    """Render engine results grouped by domain, worst severity first."""
-    failed = [f for f in findings if not f.passed]
+    """Render engine results grouped by domain, worst severity first.
+
+    Not-applicable checks (no relevant code to assess) are excluded from the
+    score and listed separately, so a docs/config repo is not falsely penalized.
+    """
+    applicable = [f for f in findings if f.applicable]
+    na = [f for f in findings if not f.applicable]
+    failed = [f for f in applicable if not f.passed]
     by_sev = {s: sum(1 for f in failed if f.check.severity == s) for s in SEVERITY_ORDER}
-    passed_n = sum(1 for f in findings if f.passed)
-    score = round(100 * passed_n / len(findings)) if findings else 0
+    passed_n = sum(1 for f in applicable if f.passed)
+    total = len(applicable)
+    score_str = f"{round(100 * passed_n / total)}/100" if total else "n/a"
 
     header = (
         f"Agent Audit - {target}\n"
-        f"Score: {score}/100 | "
+        f"Score: {score_str} | "
         + " | ".join(f"{by_sev[s]} {s}" for s in SEVERITY_ORDER)
+        + (f" | {len(na)} n/a" if na else "")
     )
     lines = [header, ""]
 
@@ -68,19 +76,30 @@ def render_findings(findings: list[Finding], target: str) -> str:
         lines.append(f"    -> {f.check.guidance}")
     if not failed:
         lines.append("No failing checks. [ok]")
+    if na:
+        lines.append("")
+        lines.append(f"Not applicable ({len(na)}): " + ", ".join(f.check.id for f in na))
     return "\n".join(lines) + "\n"
 
 
 def findings_report(findings: list[Finding], target: str) -> dict:
     """Machine-readable engine report - the stable JSON contract for CI."""
-    failed = [f for f in findings if not f.passed]
+    applicable = [f for f in findings if f.applicable]
+    failed = [f for f in applicable if not f.passed]
     by_sev = {s: sum(1 for f in failed if f.check.severity == s) for s in SEVERITY_ORDER}
-    passed_n = sum(1 for f in findings if f.passed)
-    total = len(findings)
+    passed_n = sum(1 for f in applicable if f.passed)
+    total = len(applicable)
+    na = sum(1 for f in findings if not f.applicable)
     return {
         "target": target,
-        "score": round(100 * passed_n / total) if total else 0,
-        "summary": {**{s: by_sev[s] for s in SEVERITY_ORDER}, "passed": passed_n, "total": total},
+        "score": round(100 * passed_n / total) if total else None,
+        "summary": {
+            **{s: by_sev[s] for s in SEVERITY_ORDER},
+            "passed": passed_n,
+            "applicable": total,
+            "not_applicable": na,
+            "total": len(findings),
+        },
         "findings": [
             {
                 "check_id": f.check.id,
@@ -88,6 +107,7 @@ def findings_report(findings: list[Finding], target: str) -> dict:
                 "title": f.check.title,
                 "severity": f.check.severity,
                 "passed": f.passed,
+                "applicable": f.applicable,
                 "evidence": f.evidence,
             }
             for f in findings
@@ -118,6 +138,6 @@ def fails_threshold(findings: list[Finding], severity: str) -> bool:
     """True if any failing finding is at or above `severity` (critical > major > minor)."""
     limit = SEVERITY_ORDER.index(severity)
     return any(
-        not f.passed and SEVERITY_ORDER.index(f.check.severity) <= limit
+        f.applicable and not f.passed and SEVERITY_ORDER.index(f.check.severity) <= limit
         for f in findings
     )
