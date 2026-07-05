@@ -27,9 +27,11 @@ from typing import Callable
 from agent_audit.domains import ALL_DOMAINS
 from agent_audit.model import Domain, Finding, SEVERITY_ORDER
 
-# Injectable seam: (system_prompt, user_prompt) -> list of verdict dicts,
-# each {"check_id": str, "passed": bool, "evidence": str}.
-VerdictCall = Callable[[str, str], list[dict]]
+# Injectable seam: (system_prompt, user_content_blocks) -> list of verdict dicts.
+# user_content_blocks is a list of message content blocks; the first (the repo
+# context) carries cache_control, so it is prompt-cached across the 6 domain calls
+# instead of being re-sent each time.
+VerdictCall = Callable[[str, list], list[dict]]
 
 DEFAULT_MODEL = os.environ.get("AGENT_AUDIT_MODEL", "claude-opus-4-8")
 
@@ -95,17 +97,25 @@ def _system_prompt() -> str:
     )
 
 
-def _user_prompt(domain: Domain, context: str) -> str:
+def _context_block(context: str) -> dict:
+    """The repo-content block: wrapped as untrusted data and marked for prompt
+    caching. It is identical across all six domain calls, so calls 2-6 read it
+    from cache instead of re-sending the whole repo (~65-70% input saving)."""
+    return {
+        "type": "text",
+        "text": f"<repository_content>\n{context}\n</repository_content>",
+        "cache_control": {"type": "ephemeral"},
+    }
+
+
+def _domain_checks_text(domain: Domain) -> str:
     checks = "\n".join(
         f"- {c.id}: {c.title} (severity if failed: {c.severity})" for c in domain.checks
     )
-    return (
-        f"Domain {domain.id} - {domain.name}. Audit these checks:\n{checks}\n\n"
-        f"<repository_content>\n{context}\n</repository_content>"
-    )
+    return f"Domain {domain.id} - {domain.name}. Audit these checks:\n{checks}"
 
 
-def _default_verdict_call(system: str, user: str) -> list[dict]:
+def _default_verdict_call(system: str, content: list) -> list[dict]:
     """Structured Anthropic call. Lazy imports; needs the [engine] extra + key."""
     try:
         import anthropic
@@ -131,7 +141,7 @@ def _default_verdict_call(system: str, user: str) -> list[dict]:
         model=DEFAULT_MODEL,
         max_tokens=4096,
         system=system,
-        messages=[{"role": "user", "content": user}],
+        messages=[{"role": "user", "content": content}],
         output_format=_DomainVerdicts,
     )
     return [v.model_dump() for v in resp.parsed_output.verdicts]
@@ -176,7 +186,9 @@ def _map_verdicts(domain: Domain, verdicts: list[dict]) -> list[Finding]:
 
 
 def audit_domain(domain: Domain, context: str, verdict_call: VerdictCall) -> list[Finding]:
-    verdicts = verdict_call(_system_prompt(), _user_prompt(domain, context))
+    # context block first (cached prefix, shared across domains) + domain checks
+    content = [_context_block(context), {"type": "text", "text": _domain_checks_text(domain)}]
+    verdicts = verdict_call(_system_prompt(), content)
     return _map_verdicts(domain, verdicts)
 
 
