@@ -45,3 +45,9 @@ class Finding:
     passed: bool
     evidence: str = ""  # where/why, e.g. "engine.py:88"
     applicable: bool = True  # False = no relevant code to assess (excluded from score)
+    severity: str | None = None  # model-assessed severity (<= check.severity); None = static
+
+    @property
+    def effective_severity(self) -> str:
+        """Reported severity: the model's context-aware assessment if given, else static."""
+        return self.severity or self.check.severity
