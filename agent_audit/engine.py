@@ -42,37 +42,86 @@ _TEXT_EXT = {
 _SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "__pycache__", "dist",
               "build", ".mypy_cache", ".pytest_cache", ".idea", ".vscode"}
 
+# Filename heuristics for ranking which files to audit first within the budget.
+_RELEVANT = ("agent", "memory", "tool", "guard", "policy", "auth", "webhook",
+             "orchestrat", "main", "cli", "api", "server", "engine", "core",
+             "jury", "review", "bid", "wallet", "custody", "prompt", "skill", "handler")
+_CONFIG = ("pyproject", "requirements", "package.json", "config", "settings",
+           "dockerfile", "compose")
+_LOWPRIO = ("test", "example", "docs/", "conftest", "changelog", "readme", "license")
 
-def gather_context(path: str, max_bytes: int = 200_000, per_file: int = 20_000) -> str:
-    """Collect readable source under `path` into one bounded, labeled bundle."""
+
+def _relevance(rel: str) -> int:
+    """Higher = more worth auditing. Prioritizes agent/tool/guardrail source and
+    configs; deprioritizes tests and docs."""
+    low = rel.lower().replace("\\", "/")
+    score = 0
+    if any(k in low for k in _LOWPRIO):
+        score -= 3
+    if any(k in low for k in _RELEVANT):
+        score += 3
+    if any(k in low for k in _CONFIG):
+        score += 2
+    if low.endswith((".py", ".js", ".ts", ".tsx", ".go", ".rs", ".rb", ".java", ".kt")):
+        score += 1
+    elif low.endswith(".md"):
+        score -= 1
+    return score
+
+
+def gather_context(
+    path: str, max_bytes: int = 200_000, per_file: int = 20_000, stats: dict | None = None,
+) -> str:
+    """Collect the most relevant readable source under `path` into one bounded,
+    labeled bundle. Files are ranked by relevance (entrypoints, memory/tool/
+    guardrail modules and configs first; tests and docs last) so a large repo is
+    audited by importance, not alphabetical order. If `stats` is given it is
+    filled with coverage info (files_total, files_included, truncated)."""
     root = Path(path)
     if root.is_file():
-        files = [root]
+        candidates = [root]
         root = root.parent
     else:
-        files = sorted(
+        candidates = [
             p for p in root.rglob("*")
             if p.is_file()
             and p.suffix.lower() in _TEXT_EXT
             and not any(part in _SKIP_DIRS for part in p.parts)
-        )
+        ]
+
+    def _rel(p: Path) -> str:
+        try:
+            return str(p.relative_to(root))
+        except ValueError:
+            return str(p)
+
+    candidates.sort(key=lambda p: (-_relevance(_rel(p)), _rel(p)))
+
     chunks: list[str] = []
     total = 0
-    for f in files:
+    included = 0
+    truncated = False
+    for f in candidates:
         try:
             text = f.read_text(encoding="utf-8", errors="replace")[:per_file]
         except OSError:
             continue
-        try:
-            rel = f.relative_to(root)
-        except ValueError:
-            rel = f
-        block = f"=== {rel} ===\n{text}\n"
+        block = f"=== {_rel(f)} ===\n{text}\n"
         if total + len(block) > max_bytes:
-            chunks.append(f"=== [truncated: byte budget {max_bytes} reached] ===\n")
-            break
+            truncated = True
+            continue  # skip this one, keep packing smaller lower-ranked files
         chunks.append(block)
         total += len(block)
+        included += 1
+    if truncated:
+        chunks.append(
+            f"=== [coverage: audited {included} of {len(candidates)} files; "
+            f"rest truncated for size] ===\n"
+        )
+    if stats is not None:
+        stats.update(
+            files_total=len(candidates), files_included=included, truncated=truncated
+        )
     return "".join(chunks)
 
 
@@ -197,11 +246,13 @@ def audit(
     verdict_call: VerdictCall | None = None,
     domains: list[Domain] | None = None,
     max_bytes: int = 200_000,
+    coverage: dict | None = None,
 ) -> list[Finding]:
-    """Audit the project at `path`, returning one Finding per check."""
+    """Audit the project at `path`, returning one Finding per check. If `coverage`
+    is given it is filled with file-coverage info."""
     call = verdict_call or _default_verdict_call
     doms = domains if domains is not None else ALL_DOMAINS
-    context = gather_context(path, max_bytes=max_bytes)
+    context = gather_context(path, max_bytes=max_bytes, stats=coverage)
     findings: list[Finding] = []
     for d in doms:
         findings.extend(audit_domain(d, context, call))
