@@ -67,8 +67,9 @@ agent-audit --version
 
 The engine treats all repository content as untrusted data, not instructions,
 and fails closed: any check it cannot verify is reported as such, never as a
-silent pass. See a complete example in
-[`examples/sample_report.md`](examples/sample_report.md).
+silent pass. See a hand-written example in
+[`examples/sample_report.md`](examples/sample_report.md), or a real run of the
+tool on its own source in [`examples/self-audit.md`](examples/self-audit.md).
 
 ## Development
 
