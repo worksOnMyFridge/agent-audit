@@ -96,6 +96,23 @@ def test_fails_threshold_ignores_na():
     assert report.fails_threshold(findings, "critical") is False
 
 
+def test_effective_severity_defaults_to_static():
+    checks = [c for d in ALL_DOMAINS for c in d.checks]
+    assert Finding(checks[0], passed=False).effective_severity == checks[0].severity
+
+
+def test_downgraded_severity_used_in_counts_and_gate():
+    from agent_audit.domains import d6_guardrails
+    crit = d6_guardrails.DOMAIN.checks[0]
+    assert crit.severity == "critical"
+    f = Finding(crit, passed=False, evidence="low impact", severity="minor")  # model downgraded
+    out = report.render_findings([f], "./t")
+    assert "1 minor" in out and "0 critical" in out
+    # a critical check downgraded to minor must not trip a --fail-on critical gate
+    assert report.fails_threshold([f], "critical") is False
+    assert report.fails_threshold([f], "minor") is True
+
+
 def test_template_report_json_contract():
     rep = report.template_report(ALL_DOMAINS, "./t")
     assert rep["engine"] is False

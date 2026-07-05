@@ -12,6 +12,14 @@ from agent_audit.domains import ALL_DOMAINS
 
 
 def main(argv: list[str] | None = None) -> int:
+    # LLM evidence text may contain non-ASCII; keep output from crashing on a
+    # non-UTF-8 console (e.g. Windows cp1252).
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
     parser = argparse.ArgumentParser(
         prog="agent-audit",
         description="Reliability audit for AI agents across the six GH-600 domains.",

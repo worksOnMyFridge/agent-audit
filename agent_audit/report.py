@@ -49,7 +49,7 @@ def render_findings(findings: list[Finding], target: str) -> str:
     applicable = [f for f in findings if f.applicable]
     na = [f for f in findings if not f.applicable]
     failed = [f for f in applicable if not f.passed]
-    by_sev = {s: sum(1 for f in failed if f.check.severity == s) for s in SEVERITY_ORDER}
+    by_sev = {s: sum(1 for f in failed if f.effective_severity == s) for s in SEVERITY_ORDER}
     passed_n = sum(1 for f in applicable if f.passed)
     total = len(applicable)
     score_str = f"{round(100 * passed_n / total)}/100" if total else "n/a"
@@ -64,7 +64,7 @@ def render_findings(findings: list[Finding], target: str) -> str:
 
     # group failed findings by domain id (from check id prefix like "d6.1" -> "D6")
     order = {s: i for i, s in enumerate(SEVERITY_ORDER)}
-    failed.sort(key=lambda f: (f.check.id, order[f.check.severity]))
+    failed.sort(key=lambda f: (f.check.id, order[f.effective_severity]))
     current_domain = None
     for f in failed:
         dom = f.check.id.split(".")[0].upper()
@@ -72,7 +72,7 @@ def render_findings(findings: list[Finding], target: str) -> str:
             current_domain = dom
             lines.append(f"{dom}")
         loc = f" ({f.evidence})" if f.evidence else ""
-        lines.append(f"  [{SEVERITY_LABEL[f.check.severity]}] {f.check.title}{loc}")
+        lines.append(f"  [{SEVERITY_LABEL[f.effective_severity]}] {f.check.title}{loc}")
         lines.append(f"    -> {f.check.guidance}")
     if not failed:
         lines.append("No failing checks. [ok]")
@@ -86,7 +86,7 @@ def findings_report(findings: list[Finding], target: str) -> dict:
     """Machine-readable engine report - the stable JSON contract for CI."""
     applicable = [f for f in findings if f.applicable]
     failed = [f for f in applicable if not f.passed]
-    by_sev = {s: sum(1 for f in failed if f.check.severity == s) for s in SEVERITY_ORDER}
+    by_sev = {s: sum(1 for f in failed if f.effective_severity == s) for s in SEVERITY_ORDER}
     passed_n = sum(1 for f in applicable if f.passed)
     total = len(applicable)
     na = sum(1 for f in findings if not f.applicable)
@@ -105,7 +105,7 @@ def findings_report(findings: list[Finding], target: str) -> dict:
                 "check_id": f.check.id,
                 "domain": f.check.id.split(".")[0].upper(),
                 "title": f.check.title,
-                "severity": f.check.severity,
+                "severity": f.effective_severity,
                 "passed": f.passed,
                 "applicable": f.applicable,
                 "evidence": f.evidence,
@@ -138,6 +138,6 @@ def fails_threshold(findings: list[Finding], severity: str) -> bool:
     """True if any failing finding is at or above `severity` (critical > major > minor)."""
     limit = SEVERITY_ORDER.index(severity)
     return any(
-        f.applicable and not f.passed and SEVERITY_ORDER.index(f.check.severity) <= limit
+        f.applicable and not f.passed and SEVERITY_ORDER.index(f.effective_severity) <= limit
         for f in findings
     )

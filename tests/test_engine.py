@@ -91,3 +91,19 @@ def test_missing_applicable_defaults_true():
     # verdicts without an "applicable" key stay applicable (fail-closed default)
     findings = engine.audit(".", verdict_call=lambda s, u: _verdicts(False), domains=[D6])
     assert all(f.applicable for f in findings)
+
+
+def test_cap_severity_downgrade_and_ceiling():
+    assert engine._cap_severity("minor", "critical") == "minor"   # downgrade allowed
+    assert engine._cap_severity("major", "critical") == "major"
+    assert engine._cap_severity("critical", "minor") == "minor"   # cannot exceed static ceiling
+    assert engine._cap_severity("", "major") is None              # nothing valid -> use static
+    assert engine._cap_severity("bogus", "major") is None
+
+
+def test_audit_applies_capped_severity():
+    # d6.1 is a critical check; the model downgrades it to minor for this context
+    call = lambda s, u: [{"check_id": "d6.1", "passed": False, "evidence": "low impact", "severity": "minor"}]  # noqa: E731
+    findings = engine.audit(".", verdict_call=call, domains=[D6])
+    f61 = next(f for f in findings if f.check.id == "d6.1")
+    assert f61.effective_severity == "minor"
