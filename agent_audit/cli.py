@@ -58,15 +58,24 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.engine:
         from agent_audit import engine  # lazy: keeps the default path dependency-free
+        cov: dict = {}
         try:
-            findings = engine.audit(str(target))
+            findings = engine.audit(str(target), coverage=cov)
         except Exception as exc:  # noqa: BLE001 - surface any engine/SDK error cleanly
             sys.stderr.write(f"error: engine failed: {exc}\n")
             return 3
         if args.format == "json":
-            sys.stdout.write(json.dumps(report.findings_report(findings, str(target)), indent=2) + "\n")
+            data = report.findings_report(findings, str(target))
+            data["coverage"] = cov
+            sys.stdout.write(json.dumps(data, indent=2) + "\n")
         else:
             sys.stdout.write(report.render_findings(findings, str(target)))
+            if cov.get("truncated"):
+                sys.stdout.write(
+                    f"\nCoverage: audited {cov['files_included']} of "
+                    f"{cov['files_total']} files (most relevant first; "
+                    f"rest exceeded the size budget).\n"
+                )
         if args.fail_on and report.fails_threshold(findings, args.fail_on):
             return 4
         return 0

@@ -28,6 +28,24 @@ def test_gather_context_respects_byte_budget(tmp_path):
     assert len(ctx) < 1500
 
 
+def test_relevance_ranks_source_over_tests_and_docs():
+    assert engine._relevance("core/memory.py") > engine._relevance("tests/test_memory.py")
+    assert engine._relevance("api/server.py") > engine._relevance("README.md")
+    assert engine._relevance("pyproject.toml") > engine._relevance("docs/guide.md")
+
+
+def test_gather_context_prioritizes_relevant_under_budget(tmp_path):
+    (tmp_path / "core").mkdir()
+    (tmp_path / "core" / "agent.py").write_text("IMPORTANT = 'core agent logic'\n")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_junk.py").write_text("x = 'y'\n" * 200)  # big, low priority
+    stats: dict = {}
+    ctx = engine.gather_context(str(tmp_path), max_bytes=200, stats=stats)  # fits only the small one
+    assert "core agent logic" in ctx      # relevant file kept
+    assert "test_junk" not in ctx         # low-priority big file dropped
+    assert stats == {"files_total": 2, "files_included": 1, "truncated": True}
+
+
 def _verdicts(passed, evidence="ok"):
     return [{"check_id": c.id, "passed": passed, "evidence": evidence} for c in D6.checks]
 
