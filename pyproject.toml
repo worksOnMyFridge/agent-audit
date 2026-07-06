@@ -1,16 +1,22 @@
 [project]
-name = "agent-audit"
+name = "agentaudit"
 version = "0.1.0"
-description = "Reliability audit for AI agents, based on the six GH-600 competency domains."
+description = "Reliability audit for AI agents across six competency domains (GH-600-aligned)."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "worksOnMyFridge" }]
-keywords = ["ai-agents", "audit", "llm", "guardrails", "gh-600", "reliability", "mcp"]
+keywords = ["ai-agents", "audit", "llm", "guardrails", "reliability", "mcp", "gh-600"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Environment :: Console",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "License :: OSI Approved :: MIT License",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
 ]
 dependencies = []
 
@@ -19,6 +25,13 @@ dependencies = []
 engine = ["anthropic>=0.40", "pydantic>=2"]
 dev = ["pytest>=8"]
 
+[project.urls]
+Homepage = "https://github.com/worksOnMyFridge/agent-audit"
+Repository = "https://github.com/worksOnMyFridge/agent-audit"
+Issues = "https://github.com/worksOnMyFridge/agent-audit/issues"
+
+# Distribution name is "agentaudit" (agent-audit was taken); the command stays
+# `agent-audit` and the import package stays `agent_audit`.
 [project.scripts]
 agent-audit = "agent_audit.cli:main"
 

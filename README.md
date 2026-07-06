@@ -16,11 +16,14 @@ private material — so the checklist itself is useful even before you run the
 tool.
 
 ```
-# not yet on PyPI — install from source
-$ pipx install "git+https://github.com/worksOnMyFridge/agent-audit"
-$ agent-audit ./my-agent            # audit checklist, no API key needed
-$ agent-audit ./my-agent --engine   # LLM-scored (add the [engine] extra + a key)
+$ pipx install agentaudit            # from PyPI (after the first release)
+$ pipx install "git+https://github.com/worksOnMyFridge/agent-audit"   # from source now
+$ agent-audit ./my-agent             # audit checklist, no API key needed
+$ agent-audit ./my-agent --engine    # LLM-scored (add the [engine] extra + a key)
 ```
+
+> Package name on PyPI is `agentaudit` (`agent-audit` was taken); the command is
+> still `agent-audit`.
 
 ```
 Agent Audit - ./my-agent
